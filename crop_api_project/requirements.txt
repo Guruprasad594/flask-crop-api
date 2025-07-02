@@ -3,4 +3,5 @@ gunicorn
 pandas
 scikit-learn
 joblib
-flask-cors
+scikit-learn==1.6.1
+
