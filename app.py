@@ -10,7 +10,7 @@ label_encoder = joblib.load('label_encoder.pkl')
 
 @app.route('/')
 def home():
-    return "🌱 Crop Prediction API is Running!"
+    return "WELCOME TO CROP-PREDICTION MODEL"
 
 @app.route('/predict', methods=['POST'])
 def predict_crop():
