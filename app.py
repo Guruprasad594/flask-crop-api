@@ -19,8 +19,8 @@ def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrien
         return [f"Crop '{chosen_crop}' not found in dataset."]
     
     required_N = float(crop_data['avg_N'].iloc[0])
-    required_P = float(crop_data['avg_P'].iloc)
-    required_K = float(crop_data['avg_K'].iloc)
+    required_P = float(crop_data['avg_P'].iloc[0])
+    required_K = float(crop_data['avg_K'].iloc[0])
     
     add_N = max(0, required_N - soil_N)
     add_P = max(0, required_P - soil_P)
