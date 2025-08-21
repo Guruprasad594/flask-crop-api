@@ -8,12 +8,12 @@ app = Flask(__name__)
 model = joblib.load('crop_prediction_model.pkl')
 label_encoder = joblib.load('label_encoder.pkl')
 
-# Load crop nutrient data and compute avg nutrients once
+# Load crop dataset and calculate avg nutrients
 df = pd.read_csv('crop.csv')
 avg_nutrients = df.groupby('crop')[['N', 'P', 'K']].mean().reset_index()
 avg_nutrients.rename(columns={'N': 'avg_N', 'P': 'avg_P', 'K': 'avg_K'}, inplace=True)
 
-def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrients_df):
+def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrients_df, threshold=5):
     crop_data = avg_nutrients_df[avg_nutrients_df['crop'] == chosen_crop]
     if crop_data.empty:
         return [f"Crop '{chosen_crop}' not found in dataset."]
@@ -22,20 +22,20 @@ def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrien
     required_P = float(crop_data['avg_P'].iloc[0])
     required_K = float(crop_data['avg_K'].iloc[0])
     
-    add_N = max(0, required_N - soil_N)
-    add_P = max(0, required_P - soil_P)
-    add_K = max(0, required_K - soil_K)
+    add_N = required_N - soil_N
+    add_P = required_P - soil_P
+    add_K = required_K - soil_K
 
     suggestions = []
-    if add_N > 0:
+    if add_N > threshold:
         suggestions.append(f"Add {add_N:.2f} units of Nitrogen (N)")
     else:
         suggestions.append("Nitrogen (N) level is adequate")
-    if add_P > 0:
+    if add_P > threshold:
         suggestions.append(f"Add {add_P:.2f} units of Phosphorus (P)")
     else:
         suggestions.append("Phosphorus (P) level is adequate")
-    if add_K > 0:
+    if add_K > threshold:
         suggestions.append(f"Add {add_K:.2f} units of Potassium (K)")
     else:
         suggestions.append("Potassium (K) level is adequate")
@@ -49,32 +49,28 @@ def home():
 def predict_crop():
     try:
         data = request.get_json()
-
-        # Extract required fields with validation
         N = data.get('N')
         P = data.get('P')
         K = data.get('K')
         temperature = data.get('temperature')
         humidity = data.get('humidity')
         ph = data.get('ph')
-        farmer_crop = data.get('farmer_crop')  # Optional
+        farmer_crop = data.get('farmer_crop')
 
+        # Basic validation
         if None in [N, P, K, temperature, humidity, ph]:
-            return jsonify({"error": "Missing required input fields"}), 400
+            return jsonify({"error": "Missing one of the required fields"}), 400
 
-        input_data = pd.DataFrame([[N, P, K, temperature, humidity, ph]],
-                                  columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph'])
-
-        # Predict crop
-        prediction = model.predict(input_data)
+        input_df = pd.DataFrame([[N, P, K, temperature, humidity, ph]],
+                                columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph'])
+        prediction = model.predict(input_df)
         crop = label_encoder.inverse_transform(prediction)[0]
 
-        # Use farmer crop if provided, else model prediction
+        # Use farmer crop if given, else model prediction
         chosen_crop = farmer_crop if farmer_crop else crop
 
-        # Get fertilizer suggestions
         fertilizer_suggestions = suggest_fertilizer_for_crop(
-            chosen_crop, N, P, K, avg_nutrients
+            chosen_crop, N, P, K, avg_nutrients, threshold=5
         )
 
         return jsonify({
