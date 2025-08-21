@@ -13,7 +13,7 @@ df = pd.read_csv('crop.csv')
 avg_nutrients = df.groupby('crop')[['N', 'P', 'K']].mean().reset_index()
 avg_nutrients.rename(columns={'N': 'avg_N', 'P': 'avg_P', 'K': 'avg_K'}, inplace=True)
 
-def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrients_df, threshold=5):
+def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrients_df, threshold=10):
     crop_data = avg_nutrients_df[avg_nutrients_df['crop'] == chosen_crop]
     if crop_data.empty:
         return [f"Crop '{chosen_crop}' not found in dataset."]
@@ -27,19 +27,23 @@ def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrien
     add_K = required_K - soil_K
 
     suggestions = []
+    need_fertilizer = False
+
     if add_N > threshold:
         suggestions.append(f"Add {add_N:.2f} units of Nitrogen (N)")
-    else:
-        suggestions.append("Nitrogen (N) level is adequate")
+        need_fertilizer = True
     if add_P > threshold:
         suggestions.append(f"Add {add_P:.2f} units of Phosphorus (P)")
-    else:
-        suggestions.append("Phosphorus (P) level is adequate")
+        need_fertilizer = True
     if add_K > threshold:
         suggestions.append(f"Add {add_K:.2f} units of Potassium (K)")
-    else:
-        suggestions.append("Potassium (K) level is adequate")
+        need_fertilizer = True
+
+    if not need_fertilizer:
+        suggestions.append("All nutrient levels are adequate")
+
     return suggestions
+
 
 @app.route('/')
 def home():
