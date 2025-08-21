@@ -70,7 +70,7 @@ def predict_crop():
         chosen_crop = farmer_crop if farmer_crop else crop
 
         fertilizer_suggestions = suggest_fertilizer_for_crop(
-            chosen_crop, N, P, K, avg_nutrients, threshold=5
+            chosen_crop, N, P, K, avg_nutrients, threshold=10
         )
 
         return jsonify({
