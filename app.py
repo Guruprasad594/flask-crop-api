@@ -4,7 +4,6 @@ import pandas as pd
 import firebase_admin
 from firebase_admin import credentials, db
 import datetime
-import os
 
 from config import Config
 
@@ -25,7 +24,6 @@ label_encoder = joblib.load('label_encoder.pkl')
 df = pd.read_csv('crop.csv')
 avg_nutrients = df.groupby('crop')[['N', 'P', 'K']].mean().reset_index()
 avg_nutrients.rename(columns={'N': 'avg_N', 'P': 'avg_P', 'K': 'avg_K'}, inplace=True)
-
 
 def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrients_df, threshold=10):
     crop_data = avg_nutrients_df[avg_nutrients_df['crop'] == chosen_crop]
@@ -66,7 +64,6 @@ def fetch_latest_sensor_data():
         return None
     latest_key = sorted(data.keys())[-1]
     return data[latest_key]
-
 
 @app.route('/')
 def home():
@@ -122,7 +119,7 @@ def auto_predict():
         'K': sensor_data.get('K'),
         'temperature': sensor_data.get('temperature'),
         'humidity': sensor_data.get('humidity'),
-        'ph': sensor_data.get('ph'),  # Ensure key names match sensor data
+        'ph': sensor_data.get('ph'),
         'farmer_crop': None
     }
 
@@ -144,6 +141,35 @@ def auto_predict():
     prediction_ref.push(record)
 
     return jsonify(prediction_response)
+
+
+@app.route('/api/soil-fertility', methods=['GET'])
+def get_soil_fertility():
+    sensor_data = fetch_latest_sensor_data()
+    if sensor_data is None:
+        return jsonify({'error': 'No sensor data found'}), 404
+
+    # Use chosen crop = None or default crop for fertilizer suggestions if needed
+    fertilizer_suggestions = suggest_fertilizer_for_crop(
+        chosen_crop=None,
+        soil_N=sensor_data.get('N', 0),
+        soil_P=sensor_data.get('P', 0),
+        soil_K=sensor_data.get('K', 0),
+        avg_nutrients_df=avg_nutrients,
+        threshold=10
+    )
+
+    response = {
+        'N_level': sensor_data.get('N'),
+        'P_level': sensor_data.get('P'),
+        'K_level': sensor_data.get('K'),
+        'pH': sensor_data.get('ph'),
+        'temperature': sensor_data.get('temperature'),
+        'humidity': sensor_data.get('humidity'),
+        'fertilizer_suggestions': fertilizer_suggestions,
+    }
+
+    return jsonify(response)
 
 
 if __name__ == '__main__':
