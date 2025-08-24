@@ -10,7 +10,7 @@ from config import Config
 app = Flask(__name__)
 app.config.from_object(Config)
 
-# Initialize Firebase Admin SDK using config values
+# Initialize Firebase Admin SDK
 cred = credentials.Certificate(app.config['FIREBASE_CRED_PATH'])
 firebase_admin.initialize_app(cred, {
     'databaseURL': app.config['FIREBASE_DB_URL']
@@ -24,7 +24,6 @@ label_encoder = joblib.load('label_encoder.pkl')
 df = pd.read_csv('crop.csv')
 avg_nutrients = df.groupby('crop')[['N', 'P', 'K']].mean().reset_index()
 avg_nutrients.rename(columns={'N': 'avg_N', 'P': 'avg_P', 'K': 'avg_K'}, inplace=True)
-
 
 def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrients_df, threshold=10):
     crop_data = avg_nutrients_df[avg_nutrients_df['crop'] == chosen_crop]
@@ -57,7 +56,6 @@ def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrien
 
     return suggestions
 
-
 def fetch_latest_sensor_data():
     ref = db.reference('/sensor_data')
     data = ref.get()
@@ -88,7 +86,6 @@ def handle_404_error(e):
 
 @app.errorhandler(Exception)
 def handle_exception(e):
-    # For unexpected exceptions, send 500 Internal Server Error
     return jsonify({
         "error": "Internal Server Error",
         "message": str(e)
@@ -98,44 +95,48 @@ def handle_exception(e):
 def home():
     return "WELCOME TO CROP-PREDICTION MODEL"
 
-
 @app.route('/predict', methods=['POST'])
 def predict_crop():
     data = request.get_json()
-    # Validate required fields
-    required_fields = ['N', 'P', 'K', 'temperature', 'humidity', 'ph']
-    missing_fields = [field for field in required_fields if data.get(field) is None]
-    if missing_fields:
-        abort(400, description=f"Missing required fields: {', '.join(missing_fields)}")
+    farmer_crop = data.get('farmer_crop')
 
-    try:
+    required_fields = ['N', 'P', 'K', 'temperature', 'humidity', 'ph']
+    missing = [f for f in required_fields if data.get(f) is None]
+
+    if missing:
+        sensor_data = fetch_latest_sensor_data()
+        if not sensor_data:
+            abort(400, description="No sensor data available in database.")
+        N = sensor_data.get('N')
+        P = sensor_data.get('P')
+        K = sensor_data.get('K')
+        temperature = sensor_data.get('temperature')
+        humidity = sensor_data.get('humidity')
+        ph = sensor_data.get('ph')
+    else:
         N = data['N']
         P = data['P']
         K = data['K']
         temperature = data['temperature']
         humidity = data['humidity']
         ph = data['ph']
-        farmer_crop = data.get('farmer_crop')
 
-        input_df = pd.DataFrame([[N, P, K, temperature, humidity, ph]],
-                                columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph'])
-        prediction = model.predict(input_df)
-        crop = label_encoder.inverse_transform(prediction)[0]
+    input_df = pd.DataFrame([[N, P, K, temperature, humidity, ph]],
+                            columns=['N', 'P', 'K', 'temperature', 'humidity', 'ph'])
+    prediction = model.predict(input_df)
+    crop = label_encoder.inverse_transform(prediction)[0]
 
-        chosen_crop = farmer_crop if farmer_crop else crop
+    chosen_crop = farmer_crop if farmer_crop else crop
 
-        fertilizer_suggestions = suggest_fertilizer_for_crop(
-            chosen_crop, N, P, K, avg_nutrients, threshold=10
-        )
+    fertilizer_suggestions = suggest_fertilizer_for_crop(
+        chosen_crop, N, P, K, avg_nutrients, threshold=10
+    )
 
-        return jsonify({
-            "predicted_crop": crop,
-            "farmer_chosen_crop": chosen_crop,
-            "fertilizer_suggestions": fertilizer_suggestions
-        })
-    except Exception as e:
-        # Let the global exception handler catch it
-        raise e
+    return jsonify({
+        "predicted_crop": crop,
+        "farmer_chosen_crop": chosen_crop,
+        "fertilizer_suggestions": fertilizer_suggestions
+    })
 
 @app.route('/auto_predict', methods=['GET'])
 def auto_predict():
@@ -172,14 +173,12 @@ def auto_predict():
 
     return jsonify(prediction_response)
 
-
 @app.route('/api/soil-fertility', methods=['GET'])
 def get_soil_fertility():
     sensor_data = fetch_latest_sensor_data()
     if sensor_data is None:
         abort(404, description='No sensor data found')
 
-    # Use chosen crop = None or default crop for fertilizer suggestions if needed
     fertilizer_suggestions = suggest_fertilizer_for_crop(
         chosen_crop=None,
         soil_N=sensor_data.get('N', 0),
@@ -200,7 +199,6 @@ def get_soil_fertility():
     }
 
     return jsonify(response)
-
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
