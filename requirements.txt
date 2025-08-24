@@ -2,4 +2,5 @@ flask
 gunicorn
 numpy
 pandas
+firebase-admin
 scikit-learn==1.6.1
