@@ -117,19 +117,17 @@ def auto_predict():
         return jsonify({'error': 'No sensor data found'}), 404
 
     input_data = {
-    'N': sensor_data.get('N'),
-    'P': sensor_data.get('P'),
-    'K': sensor_data.get('K'),
-    'temperature': sensor_data.get('temperature'),
-    'humidity': sensor_data.get('humidity'),
-    'ph': sensor_data.get('ph'),  # <-- ensure 'ph' is lower case
-    'farmer_crop': None
-}
-
+        'N': sensor_data.get('N'),
+        'P': sensor_data.get('P'),
+        'K': sensor_data.get('K'),
+        'temperature': sensor_data.get('temperature'),
+        'humidity': sensor_data.get('humidity'),
+        'ph': sensor_data.get('ph'),  # Ensure key names match sensor data
+        'farmer_crop': None
+    }
 
     with app.test_request_context('/predict', method='POST', json=input_data):
         response = predict_crop()
-        # Fix to handle tuple response (resp, status)
         if isinstance(response, tuple):
             resp_obj = response[0]
         else:
