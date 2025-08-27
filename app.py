@@ -10,7 +10,6 @@ from config import Config
 app = Flask(__name__)
 app.config.from_object(Config)
 
-
 # Initialize Firebase Admin SDK
 cred = credentials.Certificate(app.config['FIREBASE_CRED_PATH'])
 firebase_admin.initialize_app(cred, {
@@ -21,26 +20,27 @@ firebase_admin.initialize_app(cred, {
 model = joblib.load('crop_prediction_model.pkl')
 label_encoder = joblib.load('label_encoder.pkl')
 
-# Load crop dataset and calculate average nutrients
+# Load crop dataset and calculate avg nutrients
 df = pd.read_csv('crop.csv')
 avg_nutrients = df.groupby('crop')[['N', 'P', 'K']].mean().reset_index()
 avg_nutrients.rename(columns={'N': 'avg_N', 'P': 'avg_P', 'K': 'avg_K'}, inplace=True)
 
-
 def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrients_df, threshold=10):
-    if not chosen_crop:
-        return ["Crop not specified for fertilizer suggestion."]
     crop_data = avg_nutrients_df[avg_nutrients_df['crop'] == chosen_crop]
     if crop_data.empty:
         return [f"Crop '{chosen_crop}' not found in dataset."]
+
     required_N = float(crop_data['avg_N'].iloc[0])
     required_P = float(crop_data['avg_P'].iloc[0])
     required_K = float(crop_data['avg_K'].iloc[0])
+
     add_N = required_N - soil_N
     add_P = required_P - soil_P
     add_K = required_K - soil_K
+
     suggestions = []
     need_fertilizer = False
+
     if add_N > threshold:
         suggestions.append(f"Add {add_N:.2f} units of Nitrogen (N)")
         need_fertilizer = True
@@ -50,10 +50,11 @@ def suggest_fertilizer_for_crop(chosen_crop, soil_N, soil_P, soil_K, avg_nutrien
     if add_K > threshold:
         suggestions.append(f"Add {add_K:.2f} units of Potassium (K)")
         need_fertilizer = True
+
     if not need_fertilizer:
         suggestions.append("All nutrient levels are adequate")
-    return suggestions
 
+    return suggestions
 
 def fetch_latest_sensor_data():
     ref = db.reference('/sensor_data')
@@ -63,8 +64,8 @@ def fetch_latest_sensor_data():
     latest_key = sorted(data.keys())[-1]
     return data[latest_key]
 
-
 # Custom error handlers for JSON responses
+
 @app.errorhandler(400)
 def handle_400_error(e):
     description = e.description if isinstance(e, werkzeug.exceptions.HTTPException) else str(e)
@@ -73,7 +74,6 @@ def handle_400_error(e):
         "message": description,
         "status": 400
     }), 400
-
 
 @app.errorhandler(404)
 def handle_404_error(e):
@@ -84,7 +84,6 @@ def handle_404_error(e):
         "status": 404
     }), 404
 
-
 @app.errorhandler(Exception)
 def handle_exception(e):
     return jsonify({
@@ -92,24 +91,18 @@ def handle_exception(e):
         "message": str(e)
     }), 500
 
-
 @app.route('/')
 def home():
     return "WELCOME TO CROP-PREDICTION MODEL"
-
 
 @app.route('/predict', methods=['POST'])
 def predict_crop():
     data = request.get_json()
     farmer_crop = data.get('farmer_crop')
 
-    # Validate farmer crop if given
-    if farmer_crop is not None and farmer_crop not in avg_nutrients['crop'].values:
-        abort(400, description=f"Crop '{farmer_crop}' not found in dataset.")
-
     required_fields = ['N', 'P', 'K', 'temperature', 'humidity', 'ph']
     missing = [f for f in required_fields if data.get(f) is None]
-    
+
     if missing:
         sensor_data = fetch_latest_sensor_data()
         if not sensor_data:
@@ -145,12 +138,12 @@ def predict_crop():
         "fertilizer_suggestions": fertilizer_suggestions
     })
 
-
 @app.route('/auto_predict', methods=['GET'])
 def auto_predict():
     sensor_data = fetch_latest_sensor_data()
     if sensor_data is None:
         abort(404, description='No sensor data found')
+
     input_data = {
         'N': sensor_data.get('N'),
         'P': sensor_data.get('P'),
@@ -160,6 +153,7 @@ def auto_predict():
         'ph': sensor_data.get('ph'),
         'farmer_crop': None
     }
+
     with app.test_request_context('/predict', method='POST', json=input_data):
         response = predict_crop()
         if isinstance(response, tuple):
@@ -167,6 +161,7 @@ def auto_predict():
         else:
             resp_obj = response
         prediction_response = resp_obj.get_json()
+
     prediction_ref = db.reference('/predictions')
     record = {
         'timestamp': datetime.datetime.now().isoformat(),
@@ -175,14 +170,15 @@ def auto_predict():
         'fertilizer_suggestions': prediction_response.get('fertilizer_suggestions')
     }
     prediction_ref.push(record)
-    return jsonify(prediction_response)
 
+    return jsonify(prediction_response)
 
 @app.route('/api/soil-fertility', methods=['GET'])
 def get_soil_fertility():
     sensor_data = fetch_latest_sensor_data()
     if sensor_data is None:
         abort(404, description='No sensor data found')
+
     fertilizer_suggestions = suggest_fertilizer_for_crop(
         chosen_crop=None,
         soil_N=sensor_data.get('N', 0),
@@ -191,6 +187,7 @@ def get_soil_fertility():
         avg_nutrients_df=avg_nutrients,
         threshold=10
     )
+
     response = {
         'N_level': sensor_data.get('N'),
         'P_level': sensor_data.get('P'),
@@ -200,8 +197,8 @@ def get_soil_fertility():
         'humidity': sensor_data.get('humidity'),
         'fertilizer_suggestions': fertilizer_suggestions,
     }
-    return jsonify(response)
 
+    return jsonify(response)
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
