@@ -55,8 +55,8 @@ def suggest_fertilizer(crop, soil_nutrients):
     deficiency = {n: max(ref_nutrients[n] - soil_nutrients.get(n, 0), 0) for n in ['N', 'P', 'K']}
     fertilizer_amounts_ha = {
         'urea': deficiency['N'] / fertilizer_contents['urea']['N'] * 100,
-        'ssp': deficiency['P'] / fertilizer_contents['ssp']['P'] * 100,
-        'mop': deficiency['K'] / fertilizer_contents['mop']['K'] * 100,
+        'single Super Phosphate': deficiency['P'] / fertilizer_contents['ssp']['P'] * 100,
+        'Potash': deficiency['K'] / fertilizer_contents['mop']['K'] * 100,
     }
     fertilizer_amounts_acre = {k: round(v * HA_TO_ACRE, 2) for k, v in fertilizer_amounts_ha.items()}
     return fertilizer_amounts_acre
