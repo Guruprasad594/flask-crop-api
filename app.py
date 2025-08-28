@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, abort
+from flask import Flask, jsonify, abort, request
 import joblib
 import pandas as pd
 import firebase_admin
@@ -7,10 +7,8 @@ import datetime
 import werkzeug.exceptions
 from config import Config
 
-
 app = Flask(__name__)
 app.config.from_object(Config)
-
 
 # Initialize Firebase Admin SDK
 cred = credentials.Certificate(app.config['FIREBASE_CRED_PATH'])
@@ -18,10 +16,20 @@ firebase_admin.initialize_app(cred, {
     'databaseURL': app.config['FIREBASE_DB_URL']
 })
 
-
-# Load model and encoder
+# Load model, encoder, and nutrient reference
 model = joblib.load('crop_prediction_model.pkl')
 label_encoder = joblib.load('label_encoder.pkl')
+reference_df = pd.read_csv('crop.csv')
+
+# Fertilizer nutrient contents (%)
+fertilizer_contents = {
+    'urea': {'N': 46},
+    'ssp': {'P': 16},
+    'mop': {'K': 60}
+}
+
+# Conversion factor hectare to acre
+HA_TO_ACRE = 0.4047
 
 
 def fetch_latest_sensor_data():
@@ -33,8 +41,28 @@ def fetch_latest_sensor_data():
     return data[latest_key]
 
 
-# Custom error handlers for JSON responses
+def get_ref_nutrients(crop):
+    row = reference_df[reference_df['crop'] == crop]
+    if row.empty:
+        return None
+    return {'N': row['N'].values[0], 'P': row['P'].values[0], 'K': row['K'].values[0]}
 
+
+def suggest_fertilizer(crop, soil_nutrients):
+    ref_nutrients = get_ref_nutrients(crop)
+    if ref_nutrients is None:
+        return f"No nutrient reference found for crop: {crop}"
+    deficiency = {n: max(ref_nutrients[n] - soil_nutrients.get(n, 0), 0) for n in ['N', 'P', 'K']}
+    fertilizer_amounts_ha = {
+        'urea': deficiency['N'] / fertilizer_contents['urea']['N'] * 100,
+        'ssp': deficiency['P'] / fertilizer_contents['ssp']['P'] * 100,
+        'mop': deficiency['K'] / fertilizer_contents['mop']['K'] * 100,
+    }
+    fertilizer_amounts_acre = {k: round(v * HA_TO_ACRE, 2) for k, v in fertilizer_amounts_ha.items()}
+    return fertilizer_amounts_acre
+
+
+# Error Handlers
 
 @app.errorhandler(400)
 def handle_400_error(e):
@@ -63,6 +91,8 @@ def handle_exception(e):
         "message": str(e)
     }), 500
 
+
+# Routes
 
 @app.route('/')
 def home():
@@ -120,6 +150,37 @@ def get_soil_fertility():
     }
 
     return jsonify(response)
+
+
+@app.route('/fertilizer-suggestion', methods=['POST'])
+def fertilizer_suggestion():
+    data = request.json
+    crop = data.get('crop')
+    if not crop:
+        abort(400, description="Crop name is required")
+
+    sensor_data = fetch_latest_sensor_data()
+    if sensor_data is None:
+        abort(404, description="No sensor data found")
+
+    soil_nutrients = {
+        'N': sensor_data.get('N', 0),
+        'P': sensor_data.get('P', 0),
+        'K': sensor_data.get('K', 0),
+    }
+
+    suggestions = suggest_fertilizer(crop, soil_nutrients)
+    if isinstance(suggestions, str):
+        return jsonify({"error": suggestions}), 404
+
+    formatted_suggestions = []
+    for fert, amount in suggestions.items():
+        formatted_suggestions.append(f"{fert.upper()}: {amount} kg/acre")
+
+    return jsonify({
+        "crop": crop,
+        "fertilizer_suggestions": formatted_suggestions
+    })
 
 
 if __name__ == '__main__':
